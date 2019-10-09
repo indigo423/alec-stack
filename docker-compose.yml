@@ -1,0 +1,96 @@
+---
+version: '3.7'
+
+volumes:
+  data-postgres: {}
+  data-opennms: {}
+  data-es01: {}
+  data-kibana: {}
+  data-grafana: {}
+
+services:
+  database:
+    image: postgres:11
+    container_name: postgresql
+    environment:
+      - TZ=Europe/Berlin
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgrespass
+    volumes:
+      - data-postgres:/var/lib/postgresql/data
+ 
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.0
+    container_name: es01
+    environment:
+      - TZ=Europe/Berlin
+      - discovery.type=single-node
+      - cluster.name=opennms-horizon
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - data-es01:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200/tcp"
+      - "9300:9300/tcp"
+
+  kibana:
+      image: docker.elastic.co/kibana/kibana:7.3.0
+      container_name: kibana
+      environment:
+        - TZ=Europe/Berlin
+        - ELASTICSEARCH_HOSTS=http://es01:9200
+      ports:
+        - "5601:5601/tcp"
+
+  elastic-hq:
+    container_name: elastic-hq
+    image: elastichq/elasticsearch-hq:latest
+    environment:
+      - HQ_DEFAULT_URL=http://es01:9200
+    ports:
+      - "5000:5000"
+
+  horizon:
+    image: opennms/horizon:25.0.0
+    container_name: horizon
+    cap_add:
+      - ALL
+    environment:
+      - TZ=Europe/Berlin
+      - POSTGRES_HOST=database
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgrespass
+      - OPENNMS_DBNAME=horizondb
+      - OPENNMS_DBUSER=horizonuser
+      - OPENNMS_DBPASS=horizonpass
+      - OPENNMS_JAVA_OPTS=-Dcom.sun.management.jmxremote.port=18980
+    command: ["-s"]
+    volumes:
+      - ./overlay:/opt/opennms-overlay
+      - data-opennms:/opennms-data
+      - ./share:/tmp/share
+    ports:
+      - "8980:8980/tcp"
+      - "8101:8101/tcp"
+
+  grafana:
+    image: opennms/helm:bleeding
+    container_name: grafana
+    environment: 
+      - TZ=Europe/Berlin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - data-grafana:/var/lib/grafana
+    ports:
+      - "3000:3000/tcp"
+
+  alecviz:
+    image: opennms/alec-viz
+    container_name: alecviz
+    volumes: 
+      - ./share:/dataset
+    ports: 
+      - "8082:8080/tcp"
